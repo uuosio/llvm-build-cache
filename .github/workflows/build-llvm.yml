@@ -1,12 +1,12 @@
-name: Mixin Test
+name: build llvm
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
     tags:
       - "v*.*.*"
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
 
 jobs:
   run:
