@@ -26,9 +26,10 @@ jobs:
       - name: Build llvm
         run: |
           make llvm-build
+          tar -czf llvm-build-${{ matrix.os }}.tar.gz llvm-build
       - name: release-llvm
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            ./dist/${{ steps.whlfile.outputs.value }}
+            llvm-build-${{ matrix.os }}.tar.gz
