@@ -79,7 +79,7 @@ LLD_LIB_NAMES = lldCOFF lldCommon lldCore lldDriver lldELF lldMachO lldMinGW lld
 LLD_LIBS = $(START_GROUP) $(addprefix -l,$(LLD_LIB_NAMES)) $(END_GROUP)
 
 # Other libraries that are needed to link TinyGo.
-EXTRA_LIB_NAMES = LLVMInterpreter
+EXTRA_LIB_NAMES = LLVMInterpreter 
 
 # These build targets appear to be the only ones necessary to build all TinyGo
 # dependencies. Only building a subset significantly speeds up rebuilding LLVM.
@@ -87,13 +87,14 @@ EXTRA_LIB_NAMES = LLVMInterpreter
 # library path (for ninja).
 # This list also includes a few tools that are necessary as part of the full
 # TinyGo build.
-NINJA_BUILD_TARGETS = clang llvm-config llvm-ar llvm-nm $(addprefix lib/lib,$(addsuffix .a,$(LIBCLANG_NAME) $(CLANG_LIB_NAMES) $(LLD_LIB_NAMES) $(EXTRA_LIB_NAMES)))
+NINJA_BUILD_TARGETS = clang lld llvm-config llc opt llvm-strip llvm-readelf llvm-readobj llvm-objdump llvm-objcopy llvm-ranlib llvm-ar llvm-nm $(addprefix lib/lib,$(addsuffix .a,$(LIBCLANG_NAME) $(CLANG_LIB_NAMES) $(LLD_LIB_NAMES) $(EXTRA_LIB_NAMES)))
+#NINJA_BUILD_TARGETS += LLVMEosioSoftfloat LLVMEosioApply
 
 # For static linking.
 ifneq ("$(wildcard $(LLVM_BUILDDIR)/bin/llvm-config*)","")
-    CGO_CPPFLAGS+=$(shell $(LLVM_BUILDDIR)/bin/llvm-config --cppflags) -I$(abspath $(LLVM_BUILDDIR))/tools/clang/include -I$(abspath $(CLANG_SRC))/include -I$(abspath $(LLD_SRC))/include
+    CGO_CPPFLAGS+=$(shell $(LLVM_BUILDDIR)/bin/llvm-config --cppflags) -I$(abspath $(LLVM_PROJECTDIR))/llvm/include -I$(abspath $(LLVM_BUILDDIR))/tools/clang/include -I$(abspath $(CLANG_SRC))/include -I$(abspath $(LLD_SRC))/include
     CGO_CXXFLAGS=-std=c++14
-    CGO_LDFLAGS+=$(abspath $(LLVM_BUILDDIR))/lib/lib$(LIBCLANG_NAME).a -L$(abspath $(LLVM_BUILDDIR)/lib) $(CLANG_LIBS) $(LLD_LIBS) $(shell $(LLVM_BUILDDIR)/bin/llvm-config --ldflags --libs --system-libs $(LLVM_COMPONENTS)) -lstdc++ $(CGO_LDFLAGS_EXTRA)
+    CGO_LDFLAGS+=$(abspath $(LLVM_BUILDDIR))/lib/lib$(LIBCLANG_NAME).a -L$(abspath $(LLVM_BUILDDIR)/lib) $(CLANG_LIBS) $(LLD_LIBS) -lLLVMLibDriver -lLLVMDlltoolDriver $(shell $(LLVM_BUILDDIR)/bin/llvm-config --ldflags --libs --system-libs $(LLVM_COMPONENTS)) -lstdc++ $(CGO_LDFLAGS_EXTRA)
 endif
 
 
@@ -158,12 +159,14 @@ gen-device-rp: build/gen-device-svd
 # Get LLVM sources.
 $(LLVM_PROJECTDIR)/llvm:
 	git clone -b xtensa_release_11.0.0 --depth=1 https://github.com/tinygo-org/llvm-project $(LLVM_PROJECTDIR)
+#	git clone -b xtensa_eosio_release_11.0.0 --depth=1 https://github.com/uuosio/llvm-project $(LLVM_PROJECTDIR)
+
 llvm-source: $(LLVM_PROJECTDIR)/llvm
 
 # Configure LLVM.
 TINYGO_SOURCE_DIR=$(shell pwd)
 $(LLVM_BUILDDIR)/build.ninja: llvm-source
-	mkdir -p $(LLVM_BUILDDIR); cd $(LLVM_BUILDDIR); cmake -G Ninja $(TINYGO_SOURCE_DIR)/$(LLVM_PROJECTDIR)/llvm "-DLLVM_TARGETS_TO_BUILD=X86;ARM;AArch64;RISCV;WebAssembly" "-DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=AVR;Xtensa" -DCMAKE_BUILD_TYPE=Release -DLIBCLANG_BUILD_STATIC=ON -DLLVM_ENABLE_TERMINFO=OFF -DLLVM_ENABLE_ZLIB=OFF -DLLVM_ENABLE_LIBEDIT=OFF -DLLVM_ENABLE_Z3_SOLVER=OFF -DLLVM_ENABLE_OCAMLDOC=OFF -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_ENABLE_PROJECTS="clang;lld" -DLLVM_TOOL_CLANG_TOOLS_EXTRA_BUILD=OFF -DCLANG_ENABLE_STATIC_ANALYZER=OFF -DCLANG_ENABLE_ARCMT=OFF $(LLVM_OPTION)
+	mkdir -p $(LLVM_BUILDDIR); cd $(LLVM_BUILDDIR); cmake -G Ninja $(TINYGO_SOURCE_DIR)/$(LLVM_PROJECTDIR)/llvm -DEOSIO_TOOL_DIR="$(TINYGO_SOURCE_DIR)/lib/eosio/tools" "-DLLVM_TARGETS_TO_BUILD=X86;ARM;AArch64;RISCV;WebAssembly" "-DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=AVR;Xtensa" -DCMAKE_BUILD_TYPE=Release -DLIBCLANG_BUILD_STATIC=ON -DLLVM_ENABLE_TERMINFO=OFF -DLLVM_ENABLE_ZLIB=OFF -DLLVM_ENABLE_LIBEDIT=OFF -DLLVM_ENABLE_Z3_SOLVER=OFF -DLLVM_ENABLE_OCAMLDOC=OFF -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_ENABLE_PROJECTS="clang;lld" -DLLVM_TOOL_CLANG_TOOLS_EXTRA_BUILD=OFF -DCLANG_ENABLE_STATIC_ANALYZER=OFF -DCLANG_ENABLE_ARCMT=OFF $(LLVM_OPTION)
 
 # Build LLVM.
 $(LLVM_BUILDDIR): $(LLVM_BUILDDIR)/build.ninja
@@ -183,8 +186,16 @@ lib/wasi-libc-eosio/sysroot/lib/wasm32-wasi/libc.a:
 	@if [ ! -e lib/wasi-libc-eosio/Makefile ]; then echo "Submodules have not been downloaded. Please download them using:\n  git submodule update --init"; exit 1; fi
 	cd lib/wasi-libc-eosio && make -j4 WASM_CC=$(CLANG) WASM_AR=$(LLVM_AR) WASM_NM=$(LLVM_NM)
 
+.PHONY: eosio-libs
+eosio-libs:
+	mkdir -p lib/eosio/build;cd lib/eosio/build;cmake .. -G Ninja -DLLVM_BUILD_DIR=$(TINYGO_SOURCE_DIR)/llvm-build -DCMAKE_C_COMPILER_FORCED=TRUE -DCMAKE_CXX_COMPILER_FORCED=TRUE;ninja
+	mkdir -p lib/eosio/sysroot/include
+	mkdir -p lib/eosio/sysroot/lib
+	cp -r lib/eosio/build/lib/* lib/eosio/sysroot/lib
+	cp -r lib/eosio/build/include/* lib/eosio/sysroot/include
+
 eosio-go:
-	cp -p tools/eosio-go/eosio-go build/
+	cd tools/eosio-go;go build -o ../../build/eosio-go$(EXE) eosio-go.go
 
 eosio-strip:
 	cd tools/eosio-strip;go build -o ../../build/eosio-strip$(EXE) .
@@ -473,7 +484,7 @@ endif
 wasmtest:
 	$(GO) test ./tests/wasm
 
-build/release: tinygo gen-device wasi-libc
+build/release: tinygo wasi-libc wasi-libc-eosio eosio-libs
 	@mkdir -p build/release/tinygo/bin
 	@mkdir -p build/release/tinygo/lib/clang/include
 	@mkdir -p build/release/tinygo/lib/CMSIS/CMSIS
@@ -482,13 +493,15 @@ build/release: tinygo gen-device wasi-libc
 	@mkdir -p build/release/tinygo/lib/picolibc/newlib/libc
 	@mkdir -p build/release/tinygo/lib/wasi-libc
 	@mkdir -p build/release/tinygo/lib/wasi-libc-eosio
+	@mkdir -p build/release/tinygo/lib/eosio
+	@mkdir -p build/release/tinygo/lib/eosio-libc/sysroot
 	@mkdir -p build/release/tinygo/pkg/armv6m-none-eabi
 	@mkdir -p build/release/tinygo/pkg/armv7m-none-eabi
 	@mkdir -p build/release/tinygo/pkg/armv7em-none-eabi
 	@echo copying source files
 	@cp -p  build/tinygo$(EXE)           build/release/tinygo/bin
 	@cp -p  build/eosio-strip$(EXE)       build/release/tinygo/bin
-	@cp -p  tools/eosio-go/eosio-go      build/release/tinygo/bin
+	@cp -p  build/eosio-go$(EXE)      build/release/tinygo/bin
 	@cp -p $(abspath $(CLANG_SRC))/lib/Headers/*.h build/release/tinygo/lib/clang/include
 	@cp -rp lib/CMSIS/CMSIS/Include      build/release/tinygo/lib/CMSIS/CMSIS
 	@cp -rp lib/CMSIS/README.md          build/release/tinygo/lib/CMSIS
@@ -504,6 +517,10 @@ build/release: tinygo gen-device wasi-libc
 	@cp -rp lib/picolibc-include         build/release/tinygo/lib
 	@cp -rp lib/wasi-libc/sysroot        build/release/tinygo/lib/wasi-libc/sysroot
 	@cp -rp lib/wasi-libc-eosio/sysroot        build/release/tinygo/lib/wasi-libc-eosio/sysroot
+	@mkdir -p build/release/tinygo/lib/eosio/sysroot
+	@cp -rp lib/eosio/sysroot/*        build/release/tinygo/lib/eosio/sysroot
+	
+	@echo "eosio libc to build/release/tinygo/lib/eosio-libc/sysroot"
 	@cp -rp src                          build/release/tinygo/src
 	@cp -rp targets                      build/release/tinygo/targets
 	./build/tinygo build-library -target=armv6m-none-eabi  -o build/release/tinygo/pkg/armv6m-none-eabi/compiler-rt.a compiler-rt
@@ -514,9 +531,7 @@ build/release: tinygo gen-device wasi-libc
 	./build/tinygo build-library -target=armv7em-none-eabi -o build/release/tinygo/pkg/armv7em-none-eabi/picolibc.a picolibc
 
 release: build/release
-	mv build/release/tinygo build/release/uuosio.gscdk
-	tar -czf build/uuosio.gscdk.tar.gz -C build/release uuosio.gscdk
-	mv build/release/uuosio.gscdk build/release/tinygo
+	tar -czf build/release.tar.gz -C build/release tinygo
 
 deb: build/release
 	@mkdir -p build/release-deb/usr/local/bin
@@ -528,8 +543,8 @@ deb: build/release
 deb-eosio: build/release
 	@mkdir -p build/release-deb/usr/local/bin
 	@mkdir -p build/release-deb/usr/local/lib
-	cp -ar build/release/tinygo/ build/release-deb/usr/local/lib/uuosio.gscdk/
-	ln -sf ../lib/uuosio.gscdk/bin/tinygo build/release-deb/usr/local/bin/tinygo
-	ln -sf ../lib/uuosio.gscdk/bin/eosio-go build/release-deb/usr/local/bin/eosio-go
-	ln -sf ../lib/uuosio.gscdk/bin/eosio-strip build/release-deb/usr/local/bin/eosio-strip
-	fpm -f -s dir -t deb -n uuosio.gscdk -v $(shell grep "const Version = " goenv/version.go | awk '{print $$NF}') -m '@tinygo-org' --description='TinyGo is a Go compiler for small places.' --license='BSD 3-Clause' --url=https://tinygo.org/ --deb-changelog CHANGELOG.md -p build/uuosio.gscdk.deb -C ./build/release-deb
+	cp -ar build/release/tinygo/ build/release-deb/usr/local/lib/tinygo/
+	ln -sf ../lib/tinygo/bin/tinygo build/release-deb/usr/local/bin/tinygo
+	ln -sf ../lib/tinygo/bin/eosio-go build/release-deb/usr/local/bin/eosio-go
+	ln -sf ../lib/tinygo/bin/eosio-strip build/release-deb/usr/local/bin/eosio-strip
+	fpm -f -s dir -t deb -n tinygo -v $(shell grep "const Version = " goenv/version.go | awk '{print $$NF}') -m '@tinygo-org' --description='TinyGo is a Go compiler for small places.' --license='BSD 3-Clause' --url=https://tinygo.org/ --deb-changelog CHANGELOG.md -p build/tinygo.deb -C ./build/release-deb
